@@ -24,7 +24,7 @@ export function isSupabaseConfigured(): boolean {
 }
 
 const UPDATE_LIST_COLUMNS =
-  "id, daily_issue_id, title, slug, short_summary, what_matters, clinical_context, area, evidence_type, evidence_strength, impact_level, publication_date, reading_time_minutes, status, created_at, updated_at";
+  "id, daily_issue_id, title, slug, short_summary, what_matters, clinical_context, area, evidence_type, evidence_strength, impact_level, publication_date, reading_time_minutes, status, display_order, created_at, updated_at";
 
 // -----------------------------------------------------------------------------
 // Boletins diários
@@ -108,6 +108,7 @@ export async function getUpdatesByIssue(
     .select(UPDATE_LIST_COLUMNS)
     .eq("daily_issue_id", issueId)
     .eq("status", "published")
+    .order("display_order", { ascending: true })
     .order("created_at", { ascending: true });
   return (data as MedicalUpdate[]) ?? [];
 }

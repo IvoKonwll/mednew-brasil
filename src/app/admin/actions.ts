@@ -110,7 +110,11 @@ export async function deleteIssue(id: string) {
 // Atualizações médicas (com relações)
 // -----------------------------------------------------------------------------
 
-export async function saveUpdate(id: string | null, fd: FormData) {
+// Núcleo de persistência (compartilhado por saveUpdate e autosaveUpdate).
+async function persistUpdate(
+  id: string | null,
+  fd: FormData,
+): Promise<{ id: string; slug: string }> {
   const supabase = await requireAuth();
 
   const title = str(fd, "title");
@@ -243,10 +247,27 @@ export async function saveUpdate(id: string | null, fd: FormData) {
     }
   }
 
+  return { id: updateId, slug };
+}
+
+// Salva e volta para a listagem.
+export async function saveUpdate(id: string | null, fd: FormData) {
+  const { slug } = await persistUpdate(id, fd);
   revalidatePath("/admin/updates");
   revalidatePath(`/updates/${slug}`);
   revalidatePath("/");
   redirect("/admin/updates");
+}
+
+// Autosave: salva sem redirecionar; devolve o id/slug para o cliente.
+export async function autosaveUpdate(
+  id: string | null,
+  fd: FormData,
+): Promise<{ id: string; slug: string }> {
+  const result = await persistUpdate(id, fd);
+  revalidatePath(`/updates/${result.slug}`);
+  revalidatePath(`/admin/preview/${result.id}`);
+  return result;
 }
 
 export async function setUpdateStatus(id: string, status: ContentStatus) {
@@ -268,6 +289,39 @@ export async function deleteUpdate(id: string) {
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/updates");
+}
+
+// Associa e ordena atualizações dentro de um boletim.
+// `orderedIds` define quais updates pertencem à edição e em que ordem.
+export async function setIssueUpdates(issueId: string, orderedIds: string[]) {
+  const supabase = await requireAuth();
+
+  // Remove desta edição os updates que não estão mais na lista.
+  const { data: current } = await supabase
+    .from("medical_updates")
+    .select("id")
+    .eq("daily_issue_id", issueId);
+  const currentIds = ((current as { id: string }[]) ?? []).map((r) => r.id);
+  const toDetach = currentIds.filter((id) => !orderedIds.includes(id));
+
+  if (toDetach.length > 0) {
+    await supabase
+      .from("medical_updates")
+      .update({ daily_issue_id: null })
+      .in("id", toDetach);
+  }
+
+  // Associa e ordena os selecionados.
+  for (let i = 0; i < orderedIds.length; i++) {
+    await supabase
+      .from("medical_updates")
+      .update({ daily_issue_id: issueId, display_order: i })
+      .eq("id", orderedIds[i]);
+  }
+
+  revalidatePath("/admin/boletins");
+  revalidatePath(`/admin/boletins/edit/${issueId}`);
+  revalidatePath("/");
 }
 
 // -----------------------------------------------------------------------------

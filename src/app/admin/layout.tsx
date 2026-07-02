@@ -1,11 +1,11 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { isSupabaseConfigured } from "@/lib/queries";
 import Link from "next/link";
+import { isSupabaseConfigured } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminLayout({
+// Portão do admin: garante Supabase configurado. A autenticação/UI de painel
+// fica no layout do route group (panel); login e preview renderizam "puros".
+export default function AdminGateLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -22,29 +22,12 @@ export default async function AdminLayout({
           para <code className="rounded bg-paper-soft px-1">.env.local</code> e
           preencha as chaves.
         </p>
-        <Link href="/" className="mt-6 inline-block text-navy-500 underline">
+        <Link href="/" className="mt-6 inline-block text-signal underline">
           Voltar ao site
         </Link>
       </div>
     );
   }
 
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Sem usuário: só a página de login chega aqui (middleware protege o resto).
-  if (!user) {
-    return <div className="min-h-screen bg-paper">{children}</div>;
-  }
-
-  return (
-    <div className="flex min-h-screen flex-col bg-paper md:flex-row">
-      <AdminSidebar email={user.email ?? undefined} />
-      <div className="flex-1 overflow-x-hidden">
-        <div className="mx-auto max-w-5xl px-4 py-8 md:px-8">{children}</div>
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen bg-paper">{children}</div>;
 }

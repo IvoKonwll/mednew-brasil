@@ -7,6 +7,7 @@ import type {
   RawUpdate,
   Source,
 } from "@/lib/types";
+import type { ContentStatus } from "@/lib/constants";
 
 export async function adminListIssues(): Promise<DailyIssue[]> {
   const supabase = createSupabaseServerClient();
@@ -103,4 +104,48 @@ export async function adminCounts() {
     published: published.count ?? 0,
     rawPending: raw.count ?? 0,
   };
+}
+
+// Contagens por status editorial + boletim de hoje (para o dashboard).
+export async function adminEditorialSnapshot(today: string) {
+  const supabase = createSupabaseServerClient();
+  const countByStatus = (status: ContentStatus) =>
+    supabase
+      .from("medical_updates")
+      .select("id", { count: "exact", head: true })
+      .eq("status", status);
+
+  const [draft, review, published, archived, todayIssue] = await Promise.all([
+    countByStatus("draft"),
+    countByStatus("review"),
+    countByStatus("published"),
+    countByStatus("archived"),
+    supabase
+      .from("daily_issues")
+      .select("*")
+      .eq("issue_date", today)
+      .maybeSingle(),
+  ]);
+
+  return {
+    draft: draft.count ?? 0,
+    review: review.count ?? 0,
+    published: published.count ?? 0,
+    archived: archived.count ?? 0,
+    todayIssue: (todayIssue.data as DailyIssue | null) ?? null,
+  };
+}
+
+// Atualizações associadas a um boletim (para o editor de edição).
+export async function adminGetIssueUpdates(
+  issueId: string,
+): Promise<MedicalUpdate[]> {
+  const supabase = createSupabaseServerClient();
+  const { data } = await supabase
+    .from("medical_updates")
+    .select("*")
+    .eq("daily_issue_id", issueId)
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  return (data as MedicalUpdate[]) ?? [];
 }

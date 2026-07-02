@@ -74,6 +74,15 @@ export function RowActions({
           Em revisão
         </button>
       )}
+      {type === "update" && status !== "archived" && (
+        <button
+          disabled={pending}
+          onClick={() => setStatus("archived")}
+          className={`${btn} bg-ink/5 text-ink-soft hover:bg-ink/10`}
+        >
+          Arquivar
+        </button>
+      )}
       <button
         disabled={pending}
         onClick={remove}

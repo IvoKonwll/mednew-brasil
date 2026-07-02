@@ -54,6 +54,17 @@ export function SourceFormRepeater({
   const inputCls =
     "w-full rounded-md border border-ink-line bg-white px-3 py-2 text-sm focus:border-navy focus:outline-none focus:ring-1 focus:ring-navy";
 
+  // Valida URL (http/https). Vazio não é erro; inválido sim.
+  function isValidUrl(url: string): boolean {
+    if (!url) return true;
+    try {
+      const u = new URL(url);
+      return u.protocol === "http:" || u.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   return (
     <div className="space-y-4">
       <input
@@ -94,12 +105,23 @@ export function SourceFormRepeater({
               ))}
             </select>
           </div>
-          <input
-            className={inputCls}
-            placeholder="https://..."
-            value={s.url}
-            onChange={(e) => update(i, { url: e.target.value })}
-          />
+          <div>
+            <input
+              className={`${inputCls} ${
+                isValidUrl(s.url)
+                  ? ""
+                  : "border-impact-alerta focus:border-impact-alerta focus:ring-impact-alerta"
+              }`}
+              placeholder="https://..."
+              value={s.url}
+              onChange={(e) => update(i, { url: e.target.value })}
+            />
+            {!isValidUrl(s.url) && (
+              <p className="mt-1 text-xs text-impact-alerta">
+                URL inválida. Use http:// ou https://
+              </p>
+            )}
+          </div>
           <div className="grid items-center gap-3 sm:grid-cols-2">
             <label className="flex items-center gap-2 text-sm text-ink-soft">
               Acessado em

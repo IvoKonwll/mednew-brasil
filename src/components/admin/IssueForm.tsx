@@ -5,6 +5,7 @@ import type { DailyIssue } from "@/lib/types";
 import { CONTENT_STATUSES, STATUS_LABELS } from "@/lib/constants";
 import { saveIssue } from "@/app/admin/actions";
 import { FormSection, TextArea, TextField } from "./fields";
+import { Alert } from "./Alert";
 
 export function IssueForm({ issue }: { issue?: DailyIssue }) {
   const [saving, setSaving] = useState(false);
@@ -80,7 +81,7 @@ export function IssueForm({ issue }: { issue?: DailyIssue }) {
         </div>
       </FormSection>
 
-      {error && <p className="text-sm text-impact-alerta">{error}</p>}
+      {error && <Alert tone="error">{error}</Alert>}
 
       <div className="flex gap-3">
         <button

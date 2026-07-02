@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Link from "next/link";
 import type { DailyIssue, FullMedicalUpdate } from "@/lib/types";
 import {
   CONTENT_STATUSES,
@@ -10,15 +11,27 @@ import {
   MEDICAL_AREAS,
   STATUS_LABELS,
 } from "@/lib/constants";
-import { saveUpdate } from "@/app/admin/actions";
+import { autosaveUpdate, saveUpdate } from "@/app/admin/actions";
 import {
   CheckboxField,
-  FormSection,
   SelectField,
   TextArea,
   TextField,
 } from "./fields";
 import { SourceFormRepeater } from "./SourceFormRepeater";
+import { Alert } from "./Alert";
+
+const TABS = [
+  { id: "resumo", label: "A. Resumo" },
+  { id: "mecanismo", label: "B. Mecanismo" },
+  { id: "estudo", label: "C. Estudo" },
+  { id: "resultados", label: "D. Resultados" },
+  { id: "critica", label: "E. Crítica" },
+  { id: "brasil", label: "F. Brasil" },
+  { id: "fontes", label: "G. Fontes" },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
 
 export function UpdateForm({
   update,
@@ -27,33 +40,85 @@ export function UpdateForm({
   update?: FullMedicalUpdate;
   issues: DailyIssue[];
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [tab, setTab] = useState<TabId>("resumo");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [autosaveOn, setAutosaveOn] = useState(false);
+  const [autosaveMsg, setAutosaveMsg] = useState("");
+  const [currentId, setCurrentId] = useState<string | null>(update?.id ?? null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const s = update?.study_details;
   const m = update?.mechanism_details;
   const c = update?.critical_appraisal;
 
+  // Submit final (salva e volta à listagem).
   async function action(fd: FormData) {
     setSaving(true);
     setError("");
     try {
-      await saveUpdate(update?.id ?? null, fd);
+      await saveUpdate(currentId, fd);
     } catch (e) {
       setSaving(false);
       setError(e instanceof Error ? e.message : "Erro ao salvar.");
     }
   }
 
+  // Autosave debounced.
+  function scheduleAutosave() {
+    if (!autosaveOn || !formRef.current) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      if (!formRef.current) return;
+      const fd = new FormData(formRef.current);
+      if (!String(fd.get("title") ?? "").trim()) return; // título é obrigatório
+      try {
+        setAutosaveMsg("Salvando...");
+        const res = await autosaveUpdate(currentId, fd);
+        setCurrentId(res.id);
+        setAutosaveMsg(
+          `Salvo automaticamente às ${new Date().toLocaleTimeString("pt-BR")}`,
+        );
+      } catch {
+        setAutosaveMsg("Falha no autosave");
+      }
+    }, 1500);
+  }
+
+  const tabBtn = (active: boolean) =>
+    `whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition ${
+      active
+        ? "border-navy text-navy"
+        : "border-transparent text-ink-muted hover:text-ink"
+    }`;
+
   return (
-    <form action={action} className="space-y-6">
-      {/* 1. Identificação */}
-      <FormSection title="1. Identificação">
-        <TextField
-          name="title"
-          label="Título"
-          required
-          defaultValue={update?.title}
-        />
+    <form
+      ref={formRef}
+      action={action}
+      onChange={scheduleAutosave}
+      className="space-y-6"
+    >
+      {/* Barra de abas */}
+      <div className="sticky top-0 z-10 -mx-4 border-b border-ink-line bg-paper/95 px-4 backdrop-blur md:-mx-8 md:px-8">
+        <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={tabBtn(tab === t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* A. Resumo */}
+      <Panel active={tab === "resumo"}>
+        <TextField name="title" label="Título" required defaultValue={update?.title} />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
             name="slug"
@@ -69,12 +134,7 @@ export function UpdateForm({
           />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <SelectField
-            name="area"
-            label="Área médica"
-            options={MEDICAL_AREAS}
-            defaultValue={update?.area}
-          />
+          <SelectField name="area" label="Área médica" options={MEDICAL_AREAS} defaultValue={update?.area} />
           <TextField
             name="reading_time_minutes"
             label="Leitura estimada (min)"
@@ -84,10 +144,7 @@ export function UpdateForm({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label
-              htmlFor="daily_issue_id"
-              className="block text-sm font-medium text-ink-soft"
-            >
+            <label htmlFor="daily_issue_id" className="block text-sm font-medium text-ink-soft">
               Boletim associado
             </label>
             <select
@@ -105,10 +162,7 @@ export function UpdateForm({
             </select>
           </div>
           <div>
-            <label
-              htmlFor="status"
-              className="block text-sm font-medium text-ink-soft"
-            >
+            <label htmlFor="status" className="block text-sm font-medium text-ink-soft">
               Status
             </label>
             <select
@@ -125,16 +179,7 @@ export function UpdateForm({
             </select>
           </div>
         </div>
-      </FormSection>
-
-      {/* 2. Resumo editorial */}
-      <FormSection title="2. Resumo editorial">
-        <TextArea
-          name="short_summary"
-          label="Resumo curto"
-          rows={2}
-          defaultValue={update?.short_summary}
-        />
+        <TextArea name="short_summary" label="Resumo curto" rows={2} defaultValue={update?.short_summary} />
         <TextArea
           name="what_matters"
           label="O que realmente importa"
@@ -142,29 +187,26 @@ export function UpdateForm({
           rows={4}
           defaultValue={update?.what_matters}
         />
-        <TextArea
-          name="clinical_context"
-          label="Contexto clínico"
-          rows={4}
-          defaultValue={update?.clinical_context}
-        />
-      </FormSection>
+        <TextArea name="clinical_context" label="Contexto clínico" rows={4} defaultValue={update?.clinical_context} />
+      </Panel>
 
-      {/* 3. Evidência */}
-      <FormSection title="3. Evidência">
+      {/* B. Mecanismo */}
+      <Panel active={tab === "mecanismo"}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <SelectField
-            name="evidence_type"
-            label="Tipo de evidência"
-            options={EVIDENCE_TYPES}
-            defaultValue={update?.evidence_type}
-          />
-          <SelectField
-            name="evidence_strength"
-            label="Força da evidência"
-            options={EVIDENCE_STRENGTHS}
-            defaultValue={update?.evidence_strength}
-          />
+          <TextField name="drug_class" label="Classe do medicamento" defaultValue={m?.drug_class} />
+          <TextField name="mechanism_target" label="Alvo molecular / fisiológico" defaultValue={m?.mechanism_target} />
+        </div>
+        <TextArea name="mechanism" label="Mecanismo de ação" rows={4} defaultValue={m?.mechanism} />
+        <TextArea name="disease_pathophysiology" label="Fisiopatologia da doença" rows={4} defaultValue={m?.disease_pathophysiology} />
+        <TextArea name="why_it_works" label="Por que isso melhora a doença" rows={3} defaultValue={m?.why_it_works} />
+        <TextArea name="mechanism_based_adverse_effects" label="Efeitos adversos esperados pelo mecanismo" rows={3} defaultValue={m?.mechanism_based_adverse_effects} />
+      </Panel>
+
+      {/* C. Estudo */}
+      <Panel active={tab === "estudo"}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SelectField name="evidence_type" label="Tipo de evidência" options={EVIDENCE_TYPES} defaultValue={update?.evidence_type} />
+          <SelectField name="evidence_strength" label="Força da evidência" options={EVIDENCE_STRENGTHS} defaultValue={update?.evidence_strength} />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField name="study_phase" label="Fase do estudo" defaultValue={s?.study_phase} />
@@ -186,9 +228,12 @@ export function UpdateForm({
         <TextArea name="primary_outcome" label="Desfecho primário" rows={2} defaultValue={s?.primary_outcome} />
         <TextArea name="secondary_outcomes" label="Desfechos secundários" rows={2} defaultValue={s?.secondary_outcomes} />
         <TextArea name="main_results" label="Como interpretar o resultado" rows={3} defaultValue={s?.main_results} />
+      </Panel>
 
-        <p className="pt-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
-          Resultados que importam
+      {/* D. Resultados */}
+      <Panel active={tab === "resultados"}>
+        <p className="text-sm text-ink-muted">
+          Preencha apenas os que se aplicam. Aparecem em destaque na análise.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField name="effect_size" label="Tamanho de efeito" defaultValue={s?.effect_size} />
@@ -200,38 +245,21 @@ export function UpdateForm({
           <TextField name="p_value" label="Valor de p" defaultValue={s?.p_value} />
           <TextField name="confidence_interval" label="Intervalo de confiança" defaultValue={s?.confidence_interval} />
         </div>
-      </FormSection>
+      </Panel>
 
-      {/* 4. Mecanismo */}
-      <FormSection title="4. Mecanismo e fisiopatologia">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField name="drug_class" label="Classe do medicamento" defaultValue={m?.drug_class} />
-          <TextField name="mechanism_target" label="Alvo molecular / fisiológico" defaultValue={m?.mechanism_target} />
-        </div>
-        <TextArea name="mechanism" label="Mecanismo de ação" rows={4} defaultValue={m?.mechanism} />
-        <TextArea name="disease_pathophysiology" label="Fisiopatologia da doença" rows={4} defaultValue={m?.disease_pathophysiology} />
-        <TextArea name="why_it_works" label="Por que isso melhora a doença" rows={3} defaultValue={m?.why_it_works} />
-        <TextArea name="mechanism_based_adverse_effects" label="Efeitos adversos esperados pelo mecanismo" rows={3} defaultValue={m?.mechanism_based_adverse_effects} />
-      </FormSection>
-
-      {/* 5. Interpretação crítica */}
-      <FormSection title="5. Interpretação crítica">
+      {/* E. Crítica */}
+      <Panel active={tab === "critica"}>
         <TextArea name="limitations" label="Limitações" rows={3} defaultValue={c?.limitations} />
         <TextArea name="critical_interpretation" label="Interpretação crítica" rows={3} defaultValue={c?.critical_interpretation} />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField name="conflicts_of_interest" label="Conflitos de interesse" defaultValue={c?.conflicts_of_interest} />
           <TextField name="funding" label="Financiamento" defaultValue={c?.funding} />
         </div>
-      </FormSection>
+      </Panel>
 
-      {/* 6. Impacto prático */}
-      <FormSection title="6. Impacto prático e contexto Brasil">
-        <SelectField
-          name="impact_level"
-          label="Nível de impacto"
-          options={IMPACT_LEVELS}
-          defaultValue={update?.impact_level}
-        />
+      {/* F. Brasil */}
+      <Panel active={tab === "brasil"}>
+        <SelectField name="impact_level" label="Nível de impacto" options={IMPACT_LEVELS} defaultValue={update?.impact_level} />
         <TextArea name="practical_impact" label="O que significa na prática" rows={3} defaultValue={c?.practical_impact} />
         <TextArea name="brazil_context" label="Contexto no Brasil" rows={3} defaultValue={c?.brazil_context} />
         <div className="grid gap-4 sm:grid-cols-3">
@@ -243,27 +271,77 @@ export function UpdateForm({
           <CheckboxField name="brazil_available" label="Disponível no Brasil" defaultChecked={c?.brazil_available} />
           <CheckboxField name="changes_practice_now" label="Muda conduta agora" defaultChecked={c?.changes_practice_now} />
         </div>
-      </FormSection>
+      </Panel>
 
-      {/* 7. Fontes */}
-      <FormSection
-        title="7. Fontes confiáveis"
-        description="Adicione uma ou mais fontes. Marque as fontes primárias."
-      >
+      {/* G. Fontes */}
+      <Panel active={tab === "fontes"}>
+        <p className="text-sm text-ink-muted">
+          Adicione uma ou mais fontes. Marque as fontes primárias.
+        </p>
         <SourceFormRepeater initial={update?.sources} />
-      </FormSection>
+      </Panel>
 
-      {error && <p className="text-sm text-impact-alerta">{error}</p>}
+      {error && <Alert tone="error">{error}</Alert>}
 
-      <div className="sticky bottom-0 flex gap-3 border-t border-ink-line bg-paper/95 py-4 backdrop-blur">
+      {/* Barra de ações */}
+      <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-ink-line bg-paper/95 px-4 py-4 backdrop-blur md:-mx-8 md:px-8">
         <button
           type="submit"
           disabled={saving}
-          className="rounded-md bg-navy px-5 py-2 font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-md bg-navy px-5 py-2 font-semibold text-white shadow-card transition hover:opacity-90 disabled:opacity-60"
         >
           {saving ? "Salvando..." : "Salvar atualização"}
         </button>
+
+        {currentId ? (
+          <Link
+            href={`/admin/preview/${currentId}`}
+            target="_blank"
+            className="rounded-md border border-ink-line px-4 py-2 font-semibold text-signal hover:bg-paper-soft"
+          >
+            Pré-visualizar ↗
+          </Link>
+        ) : (
+          <span
+            className="rounded-md border border-ink-line/60 px-4 py-2 text-ink-muted/60"
+            title="Salve primeiro para pré-visualizar"
+          >
+            Pré-visualizar ↗
+          </span>
+        )}
+
+        <label className="ml-auto flex items-center gap-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={autosaveOn}
+            onChange={(e) => setAutosaveOn(e.target.checked)}
+            className="h-4 w-4 rounded border-ink-line text-navy focus:ring-navy"
+          />
+          Autosave
+        </label>
+        {autosaveMsg && (
+          <span className="text-xs text-ink-muted">{autosaveMsg}</span>
+        )}
       </div>
     </form>
+  );
+}
+
+// Painel de aba: mantém montado (para o submit incluir os campos) e oculta se inativo.
+function Panel({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`rounded-lg border border-ink-line bg-paper-card p-5 shadow-card ${
+        active ? "block space-y-4" : "hidden"
+      }`}
+    >
+      {children}
+    </div>
   );
 }

@@ -39,6 +39,7 @@ export interface MedicalUpdate {
   publication_date: string | null;
   reading_time_minutes: number | null;
   status: ContentStatus;
+  display_order: number | null;
   created_at: string;
   updated_at: string;
 }
