@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { toSlug, type ContentStatus } from "@/lib/constants";
+import { collectRawUpdates, type CollectionSummary } from "@/lib/collect";
+import { todayISO } from "@/lib/date";
 
 // Garante que há um usuário autenticado antes de qualquer mutação.
 async function requireAuth() {
@@ -339,4 +341,72 @@ export async function setRawStatus(
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/admin/raw");
+}
+
+// Dispara a coleta automática manualmente a partir do painel.
+export async function runCollectionAction(): Promise<CollectionSummary> {
+  await requireAuth();
+  const summary = await collectRawUpdates({ limit: 10 });
+  revalidatePath("/admin/raw");
+  return summary;
+}
+
+// Promove um item bruto a uma atualização em rascunho (com a fonte pré-preenchida).
+export async function promoteRawToUpdate(rawId: string) {
+  const supabase = await requireAuth();
+
+  const { data: raw } = await supabase
+    .from("raw_updates")
+    .select("*")
+    .eq("id", rawId)
+    .maybeSingle();
+  if (!raw) throw new Error("Item bruto não encontrado.");
+
+  const title = String(raw.title ?? "Sem título");
+  const baseSlug = toSlug(title) || `item-${Date.now()}`;
+
+  // Tenta inserir com slug base; em colisão, adiciona sufixo curto.
+  let newId: string | null = null;
+  for (let attempt = 0; attempt < 3 && !newId; attempt++) {
+    const slug = attempt === 0 ? baseSlug : `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`;
+    const { data, error } = await supabase
+      .from("medical_updates")
+      .insert({
+        title,
+        slug,
+        short_summary: raw.raw_summary ?? null,
+        publication_date: raw.published_at
+          ? String(raw.published_at).slice(0, 10)
+          : todayISO(),
+        status: "draft" as ContentStatus,
+      })
+      .select("id")
+      .single();
+    if (!error && data) {
+      newId = data.id;
+    } else if (error && error.code !== "23505") {
+      throw new Error(error.message);
+    }
+  }
+
+  if (!newId) throw new Error("Não foi possível gerar um slug único.");
+
+  // Cria a fonte a partir do item bruto.
+  if (raw.source_url) {
+    await supabase.from("sources").insert({
+      update_id: newId,
+      source_name: String(raw.source_name ?? raw.source_type ?? "Fonte"),
+      source_type: String(raw.source_type ?? "Artigo original"),
+      url: String(raw.source_url),
+      is_primary: true,
+      accessed_at: todayISO(),
+    });
+  }
+
+  // Marca o item bruto como revisado.
+  await supabase.from("raw_updates").update({ status: "reviewed" }).eq("id", rawId);
+
+  revalidatePath("/admin/raw");
+  revalidatePath("/admin/updates");
+  redirect(`/admin/updates/edit/${newId}`);
 }

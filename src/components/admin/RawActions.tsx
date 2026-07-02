@@ -1,14 +1,21 @@
 "use client";
 
 import { useTransition } from "react";
-import { setRawStatus } from "@/app/admin/actions";
+import { promoteRawToUpdate, setRawStatus } from "@/app/admin/actions";
 
 export function RawActions({ id }: { id: string }) {
   const [pending, startTransition] = useTransition();
   const btn = "rounded px-2 py-1 text-xs font-medium transition disabled:opacity-50";
 
   return (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        disabled={pending}
+        onClick={() => startTransition(() => promoteRawToUpdate(id))}
+        className={`${btn} bg-navy/10 text-navy hover:bg-navy/20`}
+      >
+        Promover → rascunho
+      </button>
       <button
         disabled={pending}
         onClick={() => startTransition(() => setRawStatus(id, "reviewed"))}

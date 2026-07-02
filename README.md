@@ -81,7 +81,7 @@ src/
       sources/              # fontes cadastradas
       actions.ts            # Server Actions de CRUD
     api/
-      cron/fetch-updates/   # placeholder da coleta automática
+      cron/fetch-updates/   # coleta automática (protegida por CRON_SECRET)
       newsletter/           # inscrição na newsletter
     sitemap.ts  robots.ts  not-found.tsx  layout.tsx  globals.css
   components/               # Header, Footer, UpdateCard, badges, boxes, admin/*
@@ -92,7 +92,8 @@ src/
     queries.ts              # leitura pública (só publicado)
     admin-queries.ts        # leitura admin (todos os status)
     supabase/               # clients: server, client (browser), admin (service role)
-    integrations/           # placeholders: pubmed, fda, ema, who, anvisa, clinicaltrials
+    integrations/           # pubmed, fda, clinicaltrials (reais); ema, who, anvisa (placeholders)
+    collect.ts              # coleta + dedupe + gravação em raw_updates
   middleware.ts             # renova sessão + protege /admin
 supabase/
   migrations/0001_schema.sql
@@ -221,26 +222,47 @@ direto nas listas do admin, pelos botões de cada linha.
 - A **service role key** só é usada server-side (cliente `lib/supabase/admin.ts`,
   destinado ao cron). Nunca é importada no browser.
 
-## Próximos passos: automação de coleta
+## Automação de coleta
 
-A rota `GET /api/cron/fetch-updates` é um **placeholder** e retorna:
+A coleta automática está **implementada** para as fontes com API pública:
 
-```json
-{ "message": "Future integration with PubMed, FDA, EMA, WHO, Anvisa, CDC, NICE and ClinicalTrials.gov" }
-```
+- **PubMed** (`pubmed.ts`) — E-utilities (esearch + esummary), artigos/ensaios/
+  metanálises recentes.
+- **FDA** (`fda.ts`) — openFDA (recalls de medicamentos), útil para alertas.
+- **ClinicalTrials.gov** (`clinicaltrials.ts`) — API v2, estudos recentes.
 
-Em `src/lib/integrations/` há um _fetcher_ tipado por fonte (`pubmed.ts`,
-`fda.ts`, `ema.ts`, `who.ts`, `anvisa.ts`, `clinicaltrials.ts`) e um registro
-central em `index.ts`. O fluxo pretendido:
+EMA, WHO e Anvisa (`ema.ts`, `who.ts`, `anvisa.ts`) seguem como _placeholders_
+tipados (sem API JSON pública estável sem scraping). O registro central fica em
+`src/lib/integrations/index.ts`.
 
-1. O cron chama cada integração e coleta itens (`RawUpdateInput`).
-2. Os itens entram em `raw_updates` com `status = 'pending'`.
-3. A equipe revisa em **/admin/raw** e promove os relevantes a atualizações
-   completas (curadoria e revisão **humana** obrigatória antes de publicar).
+### Fluxo
 
-Ideias de evolução: tabela de `profiles`/`roles` para permissões granulares,
-editor rich-text, agendamento de publicação, envio real da newsletter,
-Open Graph images dinâmicas e testes automatizados.
+1. `collectRawUpdates()` (`src/lib/collect.ts`) roda cada integração, deduplica
+   por `source_url` e insere itens novos em `raw_updates` (`status = 'pending'`)
+   usando o cliente **service role** (server-side).
+2. A equipe revisa em **/admin/raw**, clica em **Coletar agora** para buscar sob
+   demanda e **Promover → rascunho** para transformar um item em atualização
+   (cria um `medical_update` em rascunho já com a fonte preenchida).
+3. A publicação **sempre** passa por curadoria e revisão humana.
+
+### Rodar a coleta
+
+- **Manual (painel):** botão “Coletar agora” em `/admin/raw`.
+- **HTTP/cron:** `GET /api/cron/fetch-updates?run=1` — protegido por `CRON_SECRET`
+  (via `?secret=...` ou header `Authorization: Bearer <segredo>`). Sem `run=1`,
+  a rota apenas descreve as integrações.
+- **Agendado (Vercel):** `vercel.json` já traz um cron diário. Adicione
+  `CRON_SECRET` nas variáveis de ambiente e configure o header de autorização
+  do Vercel Cron.
+
+> A coleta faz chamadas de rede em runtime (na Vercel). Requer
+> `SUPABASE_SERVICE_ROLE_KEY` para gravar em `raw_updates`.
+
+### Ideias de evolução
+
+Tabela de `profiles`/`roles` para permissões granulares, editor rich-text,
+agendamento de publicação, envio real da newsletter, deduplicação semântica e
+mapeamento automático de área/tipo de evidência.
 
 ---
 

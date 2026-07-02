@@ -1,21 +1,32 @@
 import { adminListRaw } from "@/lib/admin-queries";
 import { AdminTable } from "@/components/admin/AdminTable";
 import { RawActions } from "@/components/admin/RawActions";
+import { CollectButton } from "@/components/admin/CollectButton";
 import { Pill } from "@/components/badges";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRawPage() {
   const items = await adminListRaw();
+  const pending = items.filter((i) => i.status === "pending").length;
 
   return (
     <div>
-      <h1 className="font-serif text-2xl font-bold text-ink">Coleta bruta</h1>
-      <p className="mt-1 max-w-prose text-ink-muted">
-        Itens coletados automaticamente pelas futuras integrações (PubMed, FDA,
-        EMA, OMS, Anvisa, CDC, NICE, ClinicalTrials.gov) chegam aqui como
-        rascunhos brutos, para curadoria antes de virarem atualizações.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-2xl font-bold text-ink">Coleta bruta</h1>
+          <p className="mt-1 max-w-prose text-ink-muted">
+            Itens coletados automaticamente das integrações (PubMed, FDA,
+            ClinicalTrials.gov) chegam aqui como rascunhos brutos. Revise e{" "}
+            <strong>promova</strong> os relevantes a atualizações — a publicação
+            sempre passa por curadoria humana.
+          </p>
+          <p className="mt-1 text-sm text-ink-muted">
+            {pending} item(ns) pendente(s) de revisão.
+          </p>
+        </div>
+        <CollectButton />
+      </div>
 
       <div className="mt-6">
         <AdminTable
