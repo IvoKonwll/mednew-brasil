@@ -1,0 +1,288 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { toSlug, type ContentStatus } from "@/lib/constants";
+
+// Garante que há um usuário autenticado antes de qualquer mutação.
+async function requireAuth() {
+  const supabase = createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/admin/login");
+  return supabase;
+}
+
+function str(fd: FormData, key: string): string | null {
+  const v = fd.get(key);
+  if (v === null) return null;
+  const s = String(v).trim();
+  return s === "" ? null : s;
+}
+
+function num(fd: FormData, key: string): number | null {
+  const s = str(fd, key);
+  if (s === null) return null;
+  const n = Number(s);
+  return Number.isNaN(n) ? null : n;
+}
+
+function bool(fd: FormData, key: string): boolean | null {
+  const v = fd.get(key);
+  if (v === null || v === "") return null;
+  return v === "true" || v === "on" || v === "1";
+}
+
+// -----------------------------------------------------------------------------
+// Boletins diários
+// -----------------------------------------------------------------------------
+
+export async function saveIssue(id: string | null, fd: FormData) {
+  const supabase = await requireAuth();
+
+  const whatMattersRaw = str(fd, "what_matters") ?? "";
+  const what_matters = whatMattersRaw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const payload = {
+    issue_date: str(fd, "issue_date"),
+    issue_number: num(fd, "issue_number"),
+    title: str(fd, "title"),
+    intro: str(fd, "intro"),
+    what_matters,
+    status: (str(fd, "status") ?? "draft") as ContentStatus,
+  };
+
+  if (!payload.issue_date) {
+    throw new Error("A data do boletim é obrigatória.");
+  }
+
+  const withPublish = {
+    ...payload,
+    published_at:
+      payload.status === "published" ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (id) {
+    const { error } = await supabase
+      .from("daily_issues")
+      .update(withPublish)
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from("daily_issues").insert(withPublish);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/admin/boletins");
+  revalidatePath("/");
+  redirect("/admin/boletins");
+}
+
+export async function setIssueStatus(id: string, status: ContentStatus) {
+  const supabase = await requireAuth();
+  const { error } = await supabase
+    .from("daily_issues")
+    .update({
+      status,
+      published_at: status === "published" ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/boletins");
+  revalidatePath("/");
+}
+
+export async function deleteIssue(id: string) {
+  const supabase = await requireAuth();
+  const { error } = await supabase.from("daily_issues").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/boletins");
+}
+
+// -----------------------------------------------------------------------------
+// Atualizações médicas (com relações)
+// -----------------------------------------------------------------------------
+
+export async function saveUpdate(id: string | null, fd: FormData) {
+  const supabase = await requireAuth();
+
+  const title = str(fd, "title");
+  if (!title) throw new Error("O título é obrigatório.");
+
+  let slug = str(fd, "slug");
+  if (!slug) slug = toSlug(title);
+
+  const updateRow = {
+    daily_issue_id: str(fd, "daily_issue_id"),
+    title,
+    slug,
+    short_summary: str(fd, "short_summary"),
+    what_matters: str(fd, "what_matters"),
+    clinical_context: str(fd, "clinical_context"),
+    area: str(fd, "area"),
+    evidence_type: str(fd, "evidence_type"),
+    evidence_strength: str(fd, "evidence_strength"),
+    impact_level: str(fd, "impact_level"),
+    publication_date: str(fd, "publication_date"),
+    reading_time_minutes: num(fd, "reading_time_minutes"),
+    status: (str(fd, "status") ?? "draft") as ContentStatus,
+    updated_at: new Date().toISOString(),
+  };
+
+  let updateId = id;
+
+  if (id) {
+    const { error } = await supabase
+      .from("medical_updates")
+      .update(updateRow)
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  } else {
+    const { data, error } = await supabase
+      .from("medical_updates")
+      .insert(updateRow)
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    updateId = data.id;
+  }
+
+  if (!updateId) throw new Error("Falha ao obter o id da atualização.");
+
+  // Detalhes do estudo (upsert por update_id).
+  const study = {
+    update_id: updateId,
+    study_phase: str(fd, "study_phase"),
+    study_design: str(fd, "study_design"),
+    randomization: str(fd, "randomization"),
+    blinding: str(fd, "blinding"),
+    multicenter: bool(fd, "multicenter"),
+    sample_size: num(fd, "sample_size"),
+    population: str(fd, "population"),
+    inclusion_criteria: str(fd, "inclusion_criteria"),
+    follow_up: str(fd, "follow_up"),
+    intervention: str(fd, "intervention"),
+    control_group: str(fd, "control_group"),
+    primary_outcome: str(fd, "primary_outcome"),
+    secondary_outcomes: str(fd, "secondary_outcomes"),
+    main_results: str(fd, "main_results"),
+    effect_size: str(fd, "effect_size"),
+    absolute_risk_reduction: str(fd, "absolute_risk_reduction"),
+    nnt: str(fd, "nnt"),
+    hazard_ratio: str(fd, "hazard_ratio"),
+    relative_risk: str(fd, "relative_risk"),
+    odds_ratio: str(fd, "odds_ratio"),
+    p_value: str(fd, "p_value"),
+    confidence_interval: str(fd, "confidence_interval"),
+  };
+  await supabase
+    .from("study_details")
+    .upsert(study, { onConflict: "update_id" });
+
+  const mechanism = {
+    update_id: updateId,
+    drug_class: str(fd, "drug_class"),
+    mechanism_target: str(fd, "mechanism_target"),
+    mechanism: str(fd, "mechanism"),
+    disease_pathophysiology: str(fd, "disease_pathophysiology"),
+    why_it_works: str(fd, "why_it_works"),
+    mechanism_based_adverse_effects: str(fd, "mechanism_based_adverse_effects"),
+  };
+  await supabase
+    .from("mechanism_details")
+    .upsert(mechanism, { onConflict: "update_id" });
+
+  const appraisal = {
+    update_id: updateId,
+    limitations: str(fd, "limitations"),
+    conflicts_of_interest: str(fd, "conflicts_of_interest"),
+    funding: str(fd, "funding"),
+    critical_interpretation: str(fd, "critical_interpretation"),
+    practical_impact: str(fd, "practical_impact"),
+    brazil_context: str(fd, "brazil_context"),
+    anvisa_status: str(fd, "anvisa_status"),
+    conitec_status: str(fd, "conitec_status"),
+    sus_status: str(fd, "sus_status"),
+    brazil_available: bool(fd, "brazil_available"),
+    changes_practice_now: bool(fd, "changes_practice_now"),
+  };
+  await supabase
+    .from("critical_appraisal")
+    .upsert(appraisal, { onConflict: "update_id" });
+
+  // Fontes: recebidas como JSON no campo "sources_json".
+  const sourcesJson = str(fd, "sources_json");
+  if (sourcesJson) {
+    try {
+      const parsed = JSON.parse(sourcesJson) as Array<Record<string, unknown>>;
+      // Reescreve todas as fontes deste update.
+      await supabase.from("sources").delete().eq("update_id", updateId);
+      const rows = parsed
+        .filter((s) => s.source_name && s.url)
+        .map((s) => ({
+          update_id: updateId,
+          source_name: String(s.source_name),
+          source_type: String(s.source_type ?? "Artigo original"),
+          url: String(s.url),
+          is_primary: Boolean(s.is_primary),
+          accessed_at: s.accessed_at ? String(s.accessed_at) : null,
+          notes: s.notes ? String(s.notes) : null,
+        }));
+      if (rows.length > 0) {
+        await supabase.from("sources").insert(rows);
+      }
+    } catch {
+      // JSON malformado — ignora as fontes para não travar o salvamento.
+    }
+  }
+
+  revalidatePath("/admin/updates");
+  revalidatePath(`/updates/${slug}`);
+  revalidatePath("/");
+  redirect("/admin/updates");
+}
+
+export async function setUpdateStatus(id: string, status: ContentStatus) {
+  const supabase = await requireAuth();
+  const { error } = await supabase
+    .from("medical_updates")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/updates");
+  revalidatePath("/");
+}
+
+export async function deleteUpdate(id: string) {
+  const supabase = await requireAuth();
+  const { error } = await supabase
+    .from("medical_updates")
+    .delete()
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/updates");
+}
+
+// -----------------------------------------------------------------------------
+// Coleta bruta
+// -----------------------------------------------------------------------------
+
+export async function setRawStatus(
+  id: string,
+  status: "pending" | "reviewed" | "discarded",
+) {
+  const supabase = await requireAuth();
+  const { error } = await supabase
+    .from("raw_updates")
+    .update({ status })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/raw");
+}

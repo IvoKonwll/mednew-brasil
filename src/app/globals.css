@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-paper text-ink antialiased;
+  font-feature-settings: "kern", "liga";
+}
+
+/* Tipografia de artigo (usada na página individual e páginas de texto). */
+.editorial-prose {
+  @apply text-[1.05rem] leading-relaxed text-ink-soft;
+}
+.editorial-prose p {
+  @apply mb-4;
+}
+.editorial-prose h2 {
+  @apply mt-8 mb-3 font-serif text-2xl font-semibold text-ink;
+}
+.editorial-prose h3 {
+  @apply mt-6 mb-2 font-serif text-xl font-semibold text-ink;
+}
+.editorial-prose ul {
+  @apply mb-4 list-disc space-y-1 pl-5;
+}
+.editorial-prose ol {
+  @apply mb-4 list-decimal space-y-1 pl-5;
+}
+.editorial-prose a {
+  @apply text-navy-500 underline underline-offset-2 hover:text-navy;
+}
+.editorial-prose strong {
+  @apply font-semibold text-ink;
+}
+
+/* Linha divisória fina estilo jornal. */
+.rule {
+  @apply border-t border-ink-line;
+}
+
+/* Preserva quebras de linha vindas de textos longos do banco. */
+.whitespace-editorial {
+  white-space: pre-wrap;
+}
