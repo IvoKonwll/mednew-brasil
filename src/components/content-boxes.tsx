@@ -5,7 +5,7 @@ import type {
 } from "@/lib/types";
 import { Pill } from "./badges";
 
-// Bloco de seção com título estilo jornal.
+// Bloco de seção destacado, estilo jornal: barra de acento + olho + título.
 export function SectionBox({
   title,
   eyebrow,
@@ -15,26 +15,42 @@ export function SectionBox({
   title: string;
   eyebrow?: string;
   children: React.ReactNode;
-  accent?: "navy" | "muda" | "alerta" | "acompanhar" | "neutro";
+  accent?: "navy" | "signal" | "muda" | "alerta" | "acompanhar" | "neutro";
 }) {
-  const accentClasses: Record<string, string> = {
-    navy: "border-l-navy",
-    muda: "border-l-impact-muda",
-    alerta: "border-l-impact-alerta",
-    acompanhar: "border-l-impact-acompanhar",
-    neutro: "border-l-impact-neutro",
+  const accentBar: Record<string, string> = {
+    navy: "bg-navy",
+    signal: "bg-signal",
+    muda: "bg-impact-muda",
+    alerta: "bg-impact-alerta",
+    acompanhar: "bg-impact-acompanhar",
+    neutro: "bg-impact-neutro",
+  };
+  const eyebrowColor: Record<string, string> = {
+    navy: "text-navy",
+    signal: "text-signal",
+    muda: "text-impact-muda",
+    alerta: "text-impact-alerta",
+    acompanhar: "text-impact-acompanhar",
+    neutro: "text-ink-muted",
   };
   return (
-    <section
-      className={`rounded-r-lg border border-l-4 border-ink-line bg-paper-card p-5 ${accentClasses[accent]}`}
-    >
-      {eyebrow && (
-        <p className="mb-1 text-[0.7rem] font-semibold uppercase tracking-widest text-ink-muted">
-          {eyebrow}
-        </p>
-      )}
-      <h2 className="mb-3 font-serif text-xl font-semibold text-ink">{title}</h2>
-      <div className="editorial-prose text-[1rem]">{children}</div>
+    <section className="overflow-hidden rounded-lg border border-ink-line bg-paper-card shadow-card">
+      <div className="flex items-stretch">
+        <span className={`w-1 shrink-0 ${accentBar[accent]}`} />
+        <div className="min-w-0 flex-1 p-5 sm:p-6">
+          {eyebrow && (
+            <p
+              className={`mb-1 text-[0.68rem] font-bold uppercase tracking-[0.14em] ${eyebrowColor[accent]}`}
+            >
+              {eyebrow}
+            </p>
+          )}
+          <h2 className="mb-3 font-serif text-[1.4rem] font-bold text-ink">
+            {title}
+          </h2>
+          <div className="editorial-prose text-[1rem]">{children}</div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -78,7 +94,7 @@ export function MechanismBox({ data }: { data: MechanismDetails | null }) {
   if (!hasContent) return null;
 
   return (
-    <SectionBox eyebrow="Mecanismo" title="Como funciona no corpo" accent="navy">
+    <SectionBox eyebrow="Mecanismo" title="Como funciona no corpo" accent="signal">
       <dl className="not-prose mb-3">
         <Field label="Classe" value={data.drug_class} />
         <Field label="Alvo molecular / fisiológico" value={data.mechanism_target} />
@@ -106,7 +122,7 @@ export function MechanismBox({ data }: { data: MechanismDetails | null }) {
   );
 }
 
-// E. Como a pesquisa foi feita + F. Resultados que importam
+// E. Como a pesquisa foi feita
 export function StudyDesignBox({ data }: { data: StudyDetails | null }) {
   if (!data) return null;
 
@@ -126,20 +142,10 @@ export function StudyDesignBox({ data }: { data: StudyDetails | null }) {
     ["Desfechos secundários", data.secondary_outcomes],
   ];
 
-  const resultFields: Array<[string, string | null]> = [
-    ["Tamanho de efeito", data.effect_size],
-    ["Redução absoluta de risco", data.absolute_risk_reduction],
-    ["NNT", data.nnt],
-    ["Hazard ratio (HR)", data.hazard_ratio],
-    ["Risco relativo (RR)", data.relative_risk],
-    ["Odds ratio (OR)", data.odds_ratio],
-    ["Valor de p", data.p_value],
-    ["Intervalo de confiança", data.confidence_interval],
-  ];
-
-  const hasDesign = designFields.some(([, v]) => v !== null && v !== "" && v !== undefined);
-  const hasResults = resultFields.some(([, v]) => v);
-  if (!hasDesign && !hasResults && !data.main_results) return null;
+  const hasDesign = designFields.some(
+    ([, v]) => v !== null && v !== "" && v !== undefined,
+  );
+  if (!hasDesign && !data.main_results) return null;
 
   return (
     <SectionBox eyebrow="Método" title="Como a pesquisa foi feita" accent="navy">
@@ -157,17 +163,49 @@ export function StudyDesignBox({ data }: { data: StudyDetails | null }) {
           <Paragraph text={data.main_results} />
         </>
       )}
+    </SectionBox>
+  );
+}
 
-      {hasResults && (
-        <>
-          <h3>Resultados que importam</h3>
-          <dl className="not-prose">
-            {resultFields.map(([label, value]) => (
-              <Field key={label} label={label} value={value} />
-            ))}
-          </dl>
-        </>
-      )}
+// F. Resultados que importam — grade de "stat tiles" para leitura rápida.
+export function ResultsBox({ data }: { data: StudyDetails | null }) {
+  if (!data) return null;
+
+  const stats: Array<[string, string | null]> = [
+    ["Hazard ratio (HR)", data.hazard_ratio],
+    ["Risco relativo (RR)", data.relative_risk],
+    ["Odds ratio (OR)", data.odds_ratio],
+    ["Redução absoluta", data.absolute_risk_reduction],
+    ["NNT", data.nnt],
+    ["Tamanho de efeito", data.effect_size],
+    ["Valor de p", data.p_value],
+    ["IC 95%", data.confidence_interval],
+  ];
+
+  const present = stats.filter(([, v]) => v);
+  if (present.length === 0) return null;
+
+  return (
+    <SectionBox
+      eyebrow="Desfechos"
+      title="Resultados que importam"
+      accent="signal"
+    >
+      <div className="not-prose grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {present.map(([label, value]) => (
+          <div
+            key={label}
+            className="rounded-md border border-ink-line bg-paper-soft/40 p-3"
+          >
+            <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-ink-muted">
+              {label}
+            </p>
+            <p className="mt-1 font-serif text-lg font-bold leading-tight text-ink">
+              {value}
+            </p>
+          </div>
+        ))}
+      </div>
     </SectionBox>
   );
 }

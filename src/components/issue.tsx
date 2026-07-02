@@ -11,19 +11,21 @@ export function DailyIssueHero({
   date: string;
 }) {
   return (
-    <div className="border-b border-ink-line pb-6">
+    <div className="border-b-2 border-ink pb-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-navy-500">
+        <p className="kicker">
           Boletim médico de {relativeDateLabel(date).toLowerCase()}
         </p>
         {issue?.issue_number != null && (
-          <p className="text-xs text-ink-muted">Edição nº {issue.issue_number}</p>
+          <p className="text-xs uppercase tracking-wider text-ink-muted">
+            Edição nº {issue.issue_number}
+          </p>
         )}
       </div>
-      <h1 className="mt-2 font-serif text-3xl font-bold leading-tight text-ink sm:text-4xl">
+      <h1 className="mt-2 font-serif text-3xl font-bold leading-[1.1] text-ink sm:text-[2.75rem]">
         {issue?.title ?? `Boletim de ${formatFullDate(date)}`}
       </h1>
-      <p className="mt-1 text-sm text-ink-muted">{formatFullDate(date)}</p>
+      <p className="mt-1.5 text-sm text-ink-muted">{formatFullDate(date)}</p>
       {issue?.intro && (
         <p className="mt-4 max-w-prose text-lg leading-relaxed text-ink-soft">
           {issue.intro}
@@ -34,27 +36,45 @@ export function DailyIssueHero({
 }
 
 // Bloco "O que realmente importa hoje".
+// variant embedded: sem caixa (para colunas laterais/manchete).
 export function WhatMattersToday({
   items,
   title = "O que realmente importa hoje",
+  embedded = false,
 }: {
   items: string[] | null | undefined;
   title?: string;
+  embedded?: boolean;
 }) {
   if (!items || items.length === 0) return null;
-  return (
-    <section className="rounded-lg border-l-4 border-navy bg-paper-card p-5 shadow-sm">
-      <h2 className="mb-3 font-serif text-lg font-semibold text-ink">{title}</h2>
-      <ul className="space-y-2">
+
+  const list = (
+    <>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="font-serif text-base font-bold uppercase tracking-wide text-ink">
+          {title}
+        </h2>
+      </div>
+      <ol className="space-y-3">
         {items.map((item, i) => (
-          <li key={i} className="flex gap-3 text-ink-soft">
-            <span className="mt-0.5 font-serif text-lg font-bold text-navy-500">
-              {i + 1}
+          <li key={i} className="flex gap-3 border-b border-ink-line pb-3 last:border-0 last:pb-0">
+            <span className="font-serif text-lg font-bold leading-none text-signal tabular-nums">
+              {String(i + 1).padStart(2, "0")}
             </span>
-            <span className="text-[0.98rem] leading-relaxed">{item}</span>
+            <span className="text-[0.92rem] leading-relaxed text-ink-soft">
+              {item}
+            </span>
           </li>
         ))}
-      </ul>
+      </ol>
+    </>
+  );
+
+  if (embedded) return <div>{list}</div>;
+
+  return (
+    <section className="rounded-lg border border-ink-line border-l-4 border-l-signal bg-paper-card p-5 shadow-card">
+      {list}
     </section>
   );
 }
@@ -67,39 +87,34 @@ export function DateNavigator({
   prevDate: string | null;
   nextDate: string | null;
 }) {
+  const btn =
+    "rounded-md border border-ink-line bg-paper-card px-4 py-2.5 text-sm font-semibold text-signal shadow-card transition hover:bg-paper-soft";
+  const disabled =
+    "rounded-md border border-ink-line/50 px-4 py-2.5 text-sm text-ink-muted/50";
+
   return (
-    <nav className="flex items-center justify-between gap-2 text-sm">
+    <nav className="flex items-center justify-between gap-2 border-t-2 border-ink pt-4">
       {prevDate ? (
-        <Link
-          href={`/boletim/${prevDate}`}
-          className="rounded-md border border-ink-line bg-paper-card px-3 py-2 font-medium text-navy-500 transition hover:bg-paper-soft"
-        >
+        <Link href={`/boletim/${prevDate}`} className={btn}>
           ← Boletim anterior
         </Link>
       ) : (
-        <span className="rounded-md border border-ink-line/50 px-3 py-2 text-ink-muted/50">
-          ← Boletim anterior
-        </span>
+        <span className={disabled}>← Boletim anterior</span>
       )}
 
       <Link
         href="/arquivo"
-        className="rounded-md px-3 py-2 font-medium text-ink-muted hover:text-ink"
+        className="px-3 py-2 text-sm font-medium text-ink-muted hover:text-ink"
       >
-        Arquivo completo
+        Arquivo
       </Link>
 
       {nextDate ? (
-        <Link
-          href={`/boletim/${nextDate}`}
-          className="rounded-md border border-ink-line bg-paper-card px-3 py-2 font-medium text-navy-500 transition hover:bg-paper-soft"
-        >
+        <Link href={`/boletim/${nextDate}`} className={btn}>
           Próximo boletim →
         </Link>
       ) : (
-        <span className="rounded-md border border-ink-line/50 px-3 py-2 text-ink-muted/50">
-          Próximo boletim →
-        </span>
+        <span className={disabled}>Próximo boletim →</span>
       )}
     </nav>
   );
