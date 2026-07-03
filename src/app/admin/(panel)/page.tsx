@@ -2,6 +2,7 @@ import Link from "next/link";
 import { adminEditorialSnapshot } from "@/lib/admin-queries";
 import { StatusBadge } from "@/components/badges";
 import { formatLongDate, todayISO } from "@/lib/date";
+import { DailyPublishControls } from "@/components/admin/DailyPublishControls";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,18 @@ export default async function AdminDashboard() {
                 </Link>
               </div>
             </div>
-          ) : (
+          ) : null}
+
+          {/* Automação: montar rascunho e publicar hoje */}
+          <div className="mt-4 border-t border-ink-line pt-4">
+            <p className="mb-2 text-xs text-ink-muted">
+              A coleta diária monta a edição de hoje como rascunho. Publicar é um
+              passo de confirmação — nada vai ao ar sozinho.
+            </p>
+            <DailyPublishControls />
+          </div>
+
+          {!issue ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-ink-soft">
                 Ainda não há edição para hoje. Comece a montar o boletim.
@@ -118,7 +130,7 @@ export default async function AdminDashboard() {
                 Criar edição de hoje
               </Link>
             </div>
-          )}
+          ) : null}
         </div>
       </section>
 
