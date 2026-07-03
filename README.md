@@ -268,10 +268,30 @@ Criada pela migration `supabase/migrations/0001_schema.sql`: `id`, `title`,
 ### Rodar a coleta
 
 - **Manual (painel):** botão **“Coletar agora”** em `/admin/raw`.
-- **HTTP:** `GET /api/cron/fetch-updates?run=1` — retorna quantos itens novos
-  foram encontrados (`totalInserted`). Sem `run=1`, a rota só descreve as
+- **HTTP:** `GET /api/cron/fetch-updates?run=1` — coleta, **monta a edição de
+  hoje em rascunho** e retorna o resumo. Sem `run=1`, a rota só descreve as
   integrações. Protegida por `CRON_SECRET` (via `?secret=...` ou header
   `Authorization: Bearer <segredo>`).
+
+### Pipeline diário (montar → enriquecer → publicar)
+
+Todos protegidos por `CRON_SECRET`. A automação **nunca publica sozinha**:
+
+1. **Montar (automático no cron):** `GET /api/cron/fetch-updates?run=1` coleta e
+   monta o boletim de hoje em **rascunho** (título, fonte, resumo).
+2. **Revisar:** `GET /api/cron/publish-today` (sem `run=`) devolve o rascunho do
+   dia + o **relatório de lançamento** (tipo de estudo, aprovação, conduta,
+   mecanismo) e as fontes de cada item.
+3. **Enriquecer:** `POST /api/cron/enrich` com
+   `{ "items": [{ "slug": "...", "evidence_type": "...", "impact_level": "...",
+   "mechanism": {...}, "study": {...}, "appraisal": {...} }] }` preenche a
+   análise clínica dos rascunhos. **Não publica.**
+4. **Publicar (lançamento):** `GET /api/cron/publish-today?run=1` publica a
+   edição do dia e devolve o relatório final. Este é o passo de confirmação —
+   **não** é agendado no cron.
+
+No painel, o dashboard também traz os botões **“Montar rascunho de hoje”** e
+**“Confirmar e publicar hoje”** (com o relatório de lançamento exibido).
 
 ### Configurar o cron na Vercel
 
