@@ -112,7 +112,9 @@ export async function getDailyDraft(date: string) {
 
   const { data: updates } = await supabase
     .from("medical_updates")
-    .select("id, title, slug, area, impact_level, status, display_order")
+    .select(
+      "id, title, slug, area, evidence_type, impact_level, status, display_order, sources(url, source_type, source_name)",
+    )
     .eq("daily_issue_id", issue.id)
     .order("display_order", { ascending: true });
 
