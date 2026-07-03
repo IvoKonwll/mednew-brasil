@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { integrations } from "@/lib/integrations";
 import { collectRawUpdates } from "@/lib/collect";
+import { assembleDailyDraft } from "@/lib/assemble";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -39,12 +40,17 @@ export async function GET(request: Request) {
   }
 
   const limit = Number(url.searchParams.get("limit") ?? 10);
-  const summary = await collectRawUpdates({
+  const collection = await collectRawUpdates({
     limit: Number.isFinite(limit) ? limit : 10,
   });
 
+  // Monta o boletim de hoje em RASCUNHO (nunca publica).
+  const assembly = await assembleDailyDraft(6);
+
   return NextResponse.json({
-    status: summary.ran ? "ok" : "skipped",
-    ...summary,
+    status: collection.ran ? "ok" : "skipped",
+    collection,
+    assembly,
+    note: "Edição montada como rascunho. Publicação exige passo de confirmação (/api/cron/publish-today).",
   });
 }

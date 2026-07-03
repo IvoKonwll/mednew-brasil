@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { toSlug, type ContentStatus } from "@/lib/constants";
 import { collectRawUpdates, type CollectionSummary } from "@/lib/collect";
+import { assembleDailyDraft, type AssembleSummary } from "@/lib/assemble";
+import { publishDailyIssue, type PublishSummary } from "@/lib/publish";
 import { todayISO } from "@/lib/date";
 
 // Garante que há um usuário autenticado antes de qualquer mutação.
@@ -348,6 +350,26 @@ export async function runCollectionAction(): Promise<CollectionSummary> {
   await requireAuth();
   const summary = await collectRawUpdates({ limit: 10 });
   revalidatePath("/admin/raw");
+  return summary;
+}
+
+// Monta a edição de hoje em rascunho a partir dos itens coletados.
+export async function assembleTodayAction(): Promise<AssembleSummary> {
+  await requireAuth();
+  const summary = await assembleDailyDraft(6);
+  revalidatePath("/admin/boletins");
+  revalidatePath("/admin");
+  return summary;
+}
+
+// Confirma e PUBLICA a edição de hoje (o "lançamento").
+export async function publishTodayAction(): Promise<PublishSummary> {
+  await requireAuth();
+  const summary = await publishDailyIssue(todayISO());
+  revalidatePath("/admin");
+  revalidatePath("/admin/boletins");
+  revalidatePath("/");
+  revalidatePath("/hoje");
   return summary;
 }
 
