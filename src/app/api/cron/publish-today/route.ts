@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { todayISO } from "@/lib/date";
-import { getDailyDraft, publishDailyIssue } from "@/lib/publish";
+import {
+  buildLaunchReport,
+  getDailyDraft,
+  publishDailyIssue,
+} from "@/lib/publish";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -25,9 +29,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  // Revisão: mostra o que seria publicado.
+  // Revisão: mostra o que seria publicado + relatório de lançamento.
   if (!shouldRun) {
-    const draft = await getDailyDraft(date);
+    const [draft, report] = await Promise.all([
+      getDailyDraft(date),
+      buildLaunchReport(date),
+    ]);
     return NextResponse.json({
       mode: "review",
       date,
@@ -39,7 +46,7 @@ export async function GET(request: Request) {
             what_matters: draft.issue.what_matters,
           }
         : null,
-      updates: draft.updates,
+      report,
       hint: "Adicione ?run=1 e o CRON_SECRET para publicar.",
     });
   }

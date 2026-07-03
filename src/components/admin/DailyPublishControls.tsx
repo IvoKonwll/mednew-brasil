@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { assembleTodayAction, publishTodayAction } from "@/app/admin/actions";
+import type { LaunchReportItem } from "@/lib/publish";
 import { Alert } from "./Alert";
 
 export function DailyPublishControls() {
@@ -9,6 +10,7 @@ export function DailyPublishControls() {
   const [msg, setMsg] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(
     null,
   );
+  const [report, setReport] = useState<LaunchReportItem[]>([]);
 
   function assemble() {
     setMsg(null);
@@ -35,9 +37,11 @@ export function DailyPublishControls() {
     )
       return;
     setMsg(null);
+    setReport([]);
     startTransition(async () => {
       try {
         const r = await publishTodayAction();
+        setReport(r.report ?? []);
         setMsg({
           tone: r.publishedIssue ? "success" : "error",
           text: r.publishedIssue
@@ -69,6 +73,25 @@ export function DailyPublishControls() {
         </button>
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+
+      {report.length > 0 && (
+        <div className="rounded-lg border border-ink-line bg-paper-card p-4">
+          <p className="kicker mb-2">Relatório de lançamento</p>
+          <ul className="space-y-3">
+            {report.map((r) => (
+              <li key={r.slug} className="border-b border-ink-line pb-3 last:border-0 last:pb-0">
+                <p className="font-serif text-sm font-bold text-ink">{r.title}</p>
+                <dl className="mt-1 space-y-0.5 text-xs text-ink-soft">
+                  <div><span className="font-semibold">Tipo de estudo:</span> {r.studyType}</div>
+                  <div><span className="font-semibold">Aprovação:</span> {r.approval}</div>
+                  <div><span className="font-semibold">Muda a conduta:</span> {r.changesPractice}</div>
+                  <div><span className="font-semibold">Mecanismo:</span> {r.mechanism}</div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
