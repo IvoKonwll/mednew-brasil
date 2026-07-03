@@ -222,38 +222,72 @@ direto nas listas do admin, pelos botões de cada linha.
 - A **service role key** só é usada server-side (cliente `lib/supabase/admin.ts`,
   destinado ao cron). Nunca é importada no browser.
 
-## Automação de coleta
+## Automação de coleta de novidades
 
-A coleta automática está **implementada** para as fontes com API pública:
+> **Regra de ouro:** a automação **nunca publica**. Ela apenas salva itens
+> brutos em `raw_updates` com `status = 'pending'` para **revisão humana**.
 
-- **PubMed** (`pubmed.ts`) — E-utilities (esearch + esummary), artigos/ensaios/
-  metanálises recentes.
-- **FDA** (`fda.ts`) — openFDA (recalls de medicamentos), útil para alertas.
-- **ClinicalTrials.gov** (`clinicaltrials.ts`) — API v2, estudos recentes.
+### Fontes integradas
 
-EMA, WHO e Anvisa (`ema.ts`, `who.ts`, `anvisa.ts`) seguem como _placeholders_
-tipados (sem API JSON pública estável sem scraping). O registro central fica em
-`src/lib/integrations/index.ts`.
+| Fonte | Arquivo | Como coleta |
+| --- | --- | --- |
+| PubMed / NCBI | `pubmed.ts` | E-utilities (esearch + esummary), 7 buscas, últimos 7 dias |
+| ClinicalTrials.gov | `clinicaltrials.ts` | API v2, estudos atualizados nos últimos 7 dias |
+| FDA | `fda.ts` | RSS oficial (comunicados) |
+| OMS / WHO | `who.ts` | RSS de notícias |
+| EMA | `ema.ts` | RSS de notícias |
+| Anvisa | `anvisa.ts` | RSS de notícias (gov.br) |
+
+As URLs de RSS podem ser sobrescritas por env (`FDA_RSS_URL`, `WHO_RSS_URL`,
+`EMA_RSS_URL`, `ANVISA_RSS_URL`). Se um feed estiver indisponível, a integração
+degrada para lista vazia sem quebrar as demais.
+
+Buscas iniciais no PubMed (em `PUBMED_QUERIES`):
+`phase 3 randomized trial medicine`, `clinical guideline medicine`,
+`drug approval`, `NEJM randomized trial`, `Lancet randomized trial`,
+`JAMA clinical trial`, `systematic review guideline`.
 
 ### Fluxo
 
-1. `collectRawUpdates()` (`src/lib/collect.ts`) roda cada integração, deduplica
-   por `source_url` e insere itens novos em `raw_updates` (`status = 'pending'`)
-   usando o cliente **service role** (server-side).
-2. A equipe revisa em **/admin/raw**, clica em **Coletar agora** para buscar sob
-   demanda e **Promover → rascunho** para transformar um item em atualização
-   (cria um `medical_update` em rascunho já com a fonte preenchida).
+1. `collectRawUpdates()` (`src/lib/collect.ts`) roda cada integração, **remove
+   duplicatas por URL ou título** e insere itens novos em `raw_updates`
+   (`status = 'pending'`) usando o cliente **service role** (server-side).
+2. A equipe revisa em **/admin/raw**: pode **Descartar** ou **Promover →
+   rascunho**. A promoção cria um `medical_update` em rascunho já com **título,
+   fonte e resumo bruto** preenchidos — todo o conteúdo crítico (mecanismo,
+   estudo, leitura crítica, Brasil) fica em branco para **edição humana**.
 3. A publicação **sempre** passa por curadoria e revisão humana.
+
+### Tabela `raw_updates`
+
+Criada pela migration `supabase/migrations/0001_schema.sql`: `id`, `title`,
+`source_name`, `source_url`, `source_type`, `published_at`, `raw_summary`,
+`raw_payload` (jsonb), `status` (`pending`/`reviewed`/`discarded`),
+`created_at`.
 
 ### Rodar a coleta
 
-- **Manual (painel):** botão “Coletar agora” em `/admin/raw`.
-- **HTTP/cron:** `GET /api/cron/fetch-updates?run=1` — protegido por `CRON_SECRET`
-  (via `?secret=...` ou header `Authorization: Bearer <segredo>`). Sem `run=1`,
-  a rota apenas descreve as integrações.
-- **Agendado (Vercel):** `vercel.json` já traz um cron diário. Adicione
-  `CRON_SECRET` nas variáveis de ambiente e configure o header de autorização
-  do Vercel Cron.
+- **Manual (painel):** botão **“Coletar agora”** em `/admin/raw`.
+- **HTTP:** `GET /api/cron/fetch-updates?run=1` — retorna quantos itens novos
+  foram encontrados (`totalInserted`). Sem `run=1`, a rota só descreve as
+  integrações. Protegida por `CRON_SECRET` (via `?secret=...` ou header
+  `Authorization: Bearer <segredo>`).
+
+### Configurar o cron na Vercel
+
+1. **Variáveis de ambiente** (Project → Settings → Environment Variables):
+   defina `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY` (obrigatória para gravar) e `CRON_SECRET`.
+2. **Agendamento**: o `vercel.json` já define o cron diário:
+   ```json
+   { "crons": [{ "path": "/api/cron/fetch-updates?run=1", "schedule": "0 9 * * *" }] }
+   ```
+   `schedule` usa cron UTC (aqui, 09:00 UTC). Ajuste como quiser.
+3. **Autorização**: quando `CRON_SECRET` está definido, o Vercel Cron envia
+   automaticamente o header `Authorization: Bearer $CRON_SECRET` — a rota valida
+   esse header, então nenhuma configuração extra é necessária.
+4. Após o deploy, confira em **Vercel → Project → Cron Jobs** se o job aparece e
+   acompanhe as execuções em **Logs**.
 
 > A coleta faz chamadas de rede em runtime (na Vercel). Requer
 > `SUPABASE_SERVICE_ROLE_KEY` para gravar em `raw_updates`.

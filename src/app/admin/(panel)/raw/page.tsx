@@ -16,10 +16,11 @@ export default async function AdminRawPage() {
         <div>
           <h1 className="font-serif text-2xl font-bold text-ink">Coleta bruta</h1>
           <p className="mt-1 max-w-prose text-ink-muted">
-            Itens coletados automaticamente das integrações (PubMed, FDA,
-            ClinicalTrials.gov) chegam aqui como rascunhos brutos. Revise e{" "}
-            <strong>promova</strong> os relevantes a atualizações — a publicação
-            sempre passa por curadoria humana.
+            Itens coletados automaticamente das integrações (PubMed,
+            ClinicalTrials.gov, FDA, OMS, EMA, Anvisa) chegam aqui como rascunhos
+            brutos. Revise e <strong>promova</strong> os relevantes a
+            atualizações — a automação nunca publica; a curadoria é sempre
+            humana.
           </p>
           <p className="mt-1 text-sm text-ink-muted">
             {pending} item(ns) pendente(s) de revisão.

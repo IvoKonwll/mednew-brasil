@@ -1,22 +1,25 @@
-// Integração com Anvisa — PLACEHOLDER.
+// Integração com a Anvisa (Brasil) via RSS de notícias (portal gov.br/Plone).
+// A automação NUNCA publica: itens vão para raw_updates como "pending".
 //
-// Fonte: https://www.gov.br/anvisa
-// Objetivo futuro: Registros, bulas e alertas regulatórios da Anvisa (Brasil).
-//
-// Nesta versão do MVP a função é apenas um stub bem tipado. Ela retorna
-// uma lista vazia e `placeholder: true`, mantendo a assinatura estável para
-// quando a coleta real for implementada.
+// O caminho de RSS do gov.br pode variar; configure ANVISA_RSS_URL se preciso.
+// Se o feed não estiver disponível, a integração degrada para lista vazia.
 
+import { fetchRssAsRawUpdates } from "./rss";
 import type { FetchOptions, IntegrationFetcher, IntegrationResult } from "./types";
 
+const ANVISA_RSS =
+  process.env.ANVISA_RSS_URL ??
+  "https://www.gov.br/anvisa/pt-br/assuntos/noticias/RSS";
+
 export const anvisaFetcher: IntegrationFetcher = async (
-  _options?: FetchOptions,
+  options?: FetchOptions,
 ): Promise<IntegrationResult> => {
-  // TODO: implementar chamada real à API de Anvisa.
-  return {
-    source: "Anvisa",
-    fetchedAt: new Date().toISOString(),
-    items: [],
-    placeholder: true,
-  };
+  const items = await fetchRssAsRawUpdates({
+    url: ANVISA_RSS,
+    sourceName: "Anvisa",
+    sourceType: "Anvisa",
+    limit: Math.min(options?.limit ?? 15, 40),
+    sinceDays: options?.since ? undefined : 7,
+  });
+  return { source: "Anvisa", fetchedAt: new Date().toISOString(), items, placeholder: false };
 };

@@ -33,26 +33,30 @@ export async function collectRawUpdates(
 
   const supabase = createSupabaseAdminClient();
 
-  // URLs já existentes para deduplicar.
+  // URLs e títulos já existentes para deduplicar (por url OU título).
   const { data: existing } = await supabase
     .from("raw_updates")
-    .select("source_url")
-    .limit(2000);
-  const seen = new Set(
-    ((existing as { source_url: string | null }[]) ?? [])
-      .map((r) => r.source_url)
-      .filter(Boolean) as string[],
-  );
+    .select("source_url, title")
+    .limit(4000);
+  const seenUrls = new Set<string>();
+  const seenTitles = new Set<string>();
+  for (const r of (existing as { source_url: string | null; title: string | null }[]) ?? []) {
+    if (r.source_url) seenUrls.add(r.source_url);
+    if (r.title) seenTitles.add(normalizeTitle(r.title));
+  }
 
   for (const [name, fetcher] of Object.entries(integrations)) {
     try {
       const result = await fetcher(options);
       summary.totalFetched += result.items.length;
 
-      // Filtra itens novos (não vistos no banco nem no batch atual).
+      // Filtra itens novos (não vistos por url nem por título, no banco ou no batch).
       const fresh = result.items.filter((item) => {
-        if (!item.source_url || seen.has(item.source_url)) return false;
-        seen.add(item.source_url);
+        const t = normalizeTitle(item.title);
+        if (!item.source_url) return false;
+        if (seenUrls.has(item.source_url) || seenTitles.has(t)) return false;
+        seenUrls.add(item.source_url);
+        seenTitles.add(t);
         return true;
       });
 
@@ -93,4 +97,14 @@ export async function collectRawUpdates(
   }
 
   return summary;
+}
+
+// Normaliza título para comparação de duplicatas (sem acentos/pontuação/caixa).
+function normalizeTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }

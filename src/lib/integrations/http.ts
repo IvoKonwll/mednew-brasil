@@ -1,5 +1,32 @@
 // Helper HTTP para integrações. Timeout curto e parsing defensivo.
 
+export async function fetchText(
+  url: string,
+  init?: RequestInit,
+  timeoutMs = 12000,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Accept: "application/rss+xml, application/xml, text/xml, */*",
+        "User-Agent": "MudaConduta/1.0 (+editorial médico)",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function fetchJson<T = unknown>(
   url: string,
   init?: RequestInit,

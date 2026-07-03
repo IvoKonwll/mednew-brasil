@@ -30,8 +30,10 @@ export const clinicaltrialsFetcher: IntegrationFetcher = async (
   options?: FetchOptions,
 ): Promise<IntegrationResult> => {
   const now = new Date().toISOString();
-  const limit = Math.min(options?.limit ?? 10, 50);
+  const limit = Math.min(options?.limit ?? 15, 50);
   const term = options?.query ?? "phase 3";
+  // Recência: por padrão, últimos 7 dias (por LastUpdatePostDate).
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
   const url =
     `${API}?pageSize=${limit}` +
@@ -62,7 +64,9 @@ export const clinicaltrialsFetcher: IntegrationFetcher = async (
         raw_payload: { nctId, phases, status },
       };
     })
-    .filter((x): x is RawUpdateInput => x !== null);
+    .filter((x): x is RawUpdateInput => x !== null)
+    // Mantém apenas atualizados nos últimos 7 dias (quando há data).
+    .filter((x) => !x.published_at || new Date(x.published_at).getTime() >= cutoff);
 
   return {
     source: "ClinicalTrials.gov",

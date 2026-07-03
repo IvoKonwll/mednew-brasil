@@ -1,22 +1,22 @@
-// Integração com EMA — PLACEHOLDER.
-//
-// Fonte: https://www.ema.europa.eu
-// Objetivo futuro: EPAR, aprovações e comunicados da European Medicines Agency.
-//
-// Nesta versão do MVP a função é apenas um stub bem tipado. Ela retorna
-// uma lista vazia e `placeholder: true`, mantendo a assinatura estável para
-// quando a coleta real for implementada.
+// Integração com a EMA (European Medicines Agency) via RSS de notícias.
+// A automação NUNCA publica: itens vão para raw_updates como "pending".
 
+import { fetchRssAsRawUpdates } from "./rss";
 import type { FetchOptions, IntegrationFetcher, IntegrationResult } from "./types";
 
+// Feed de notícias da EMA. Pode ser sobrescrito por EMA_RSS_URL.
+const EMA_RSS =
+  process.env.EMA_RSS_URL ?? "https://www.ema.europa.eu/en/rss/news.xml";
+
 export const emaFetcher: IntegrationFetcher = async (
-  _options?: FetchOptions,
+  options?: FetchOptions,
 ): Promise<IntegrationResult> => {
-  // TODO: implementar chamada real à API de EMA.
-  return {
-    source: "EMA",
-    fetchedAt: new Date().toISOString(),
-    items: [],
-    placeholder: true,
-  };
+  const items = await fetchRssAsRawUpdates({
+    url: EMA_RSS,
+    sourceName: "EMA",
+    sourceType: "EMA",
+    limit: Math.min(options?.limit ?? 15, 40),
+    sinceDays: options?.since ? undefined : 7,
+  });
+  return { source: "EMA", fetchedAt: new Date().toISOString(), items, placeholder: false };
 };

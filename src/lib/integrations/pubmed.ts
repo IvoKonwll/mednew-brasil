@@ -1,7 +1,7 @@
 // Integração com PubMed (NCBI E-utilities). API pública, sem chave obrigatória.
 //
-// Fluxo: esearch (ids mais recentes por termo) -> esummary (metadados).
-// Objetivo: trazer artigos/metanálises recentes para curadoria editorial.
+// Fluxo: para cada termo, esearch (ids recentes, últimos N dias) -> esummary.
+// A automação NUNCA publica: os itens vão para raw_updates como "pending".
 
 import { fetchJson } from "./http";
 import type {
@@ -13,9 +13,16 @@ import type {
 
 const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 
-// Termo padrão: ensaios/diretrizes/metanálises recentes (alto nível de evidência).
-const DEFAULT_QUERY =
-  "(randomized controlled trial[pt] OR guideline[pt] OR meta-analysis[pt])";
+// Buscas iniciais (podem ser sobrescritas por options.query, separadas por "|").
+export const PUBMED_QUERIES = [
+  "phase 3 randomized trial medicine",
+  "clinical guideline medicine",
+  "drug approval",
+  "NEJM randomized trial",
+  "Lancet randomized trial",
+  "JAMA clinical trial",
+  "systematic review guideline",
+];
 
 interface ESearchResponse {
   esearchresult?: { idlist?: string[] };
@@ -24,35 +31,61 @@ interface ESummaryResponse {
   result?: Record<string, unknown> & { uids?: string[] };
 }
 
+function safeDate(value: string): string | null {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+async function searchIds(
+  term: string,
+  perTerm: number,
+  sinceDays: number,
+): Promise<string[]> {
+  // reldate + datetype=pdat limita aos últimos N dias por data de publicação.
+  const url =
+    `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=most+recent` +
+    `&retmax=${perTerm}&datetype=pdat&reldate=${sinceDays}` +
+    `&term=${encodeURIComponent(term)}`;
+  const res = await fetchJson<ESearchResponse>(url);
+  return res?.esearchresult?.idlist ?? [];
+}
+
 export const pubmedFetcher: IntegrationFetcher = async (
   options?: FetchOptions,
 ): Promise<IntegrationResult> => {
   const now = new Date().toISOString();
-  const limit = Math.min(options?.limit ?? 10, 50);
-  const term = options?.query ?? DEFAULT_QUERY;
+  const sinceDays = options?.since
+    ? Math.max(1, daysSince(options.since))
+    : 7; // preferencialmente últimos 7 dias
+  const perTerm = Math.min(options?.limit ?? 8, 20);
+  const terms = options?.query ? options.query.split("|") : PUBMED_QUERIES;
 
-  const searchUrl = `${EUTILS}/esearch.fcgi?db=pubmed&retmode=json&sort=most+recent&retmax=${limit}&term=${encodeURIComponent(
-    term,
-  )}`;
-  const search = await fetchJson<ESearchResponse>(searchUrl);
-  const ids = search?.esearchresult?.idlist ?? [];
+  // Coleta ids de todos os termos e deduplica.
+  const idSet = new Set<string>();
+  for (const term of terms) {
+    const ids = await searchIds(term.trim(), perTerm, sinceDays);
+    ids.forEach((id) => idSet.add(id));
+  }
+  const ids = Array.from(idSet).slice(0, 100);
 
   if (ids.length === 0) {
     return { source: "PubMed", fetchedAt: now, items: [], placeholder: false };
   }
 
-  const summaryUrl = `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${ids.join(",")}`;
-  const summary = await fetchJson<ESummaryResponse>(summaryUrl);
-  const result = summary?.result ?? {};
-
-  const items: RawUpdateInput[] = ids
-    .map((id): RawUpdateInput | null => {
+  // esummary em lotes de 50.
+  const items: RawUpdateInput[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const url = `${EUTILS}/esummary.fcgi?db=pubmed&retmode=json&id=${batch.join(",")}`;
+    const summary = await fetchJson<ESummaryResponse>(url);
+    const result = summary?.result ?? {};
+    for (const id of batch) {
       const rec = result[id] as
         | { title?: string; pubdate?: string; fulljournalname?: string; source?: string }
         | undefined;
-      if (!rec?.title) return null;
+      if (!rec?.title) continue;
       const journal = rec.fulljournalname ?? rec.source ?? "PubMed";
-      return {
+      items.push({
         title: rec.title,
         source_name: journal,
         source_url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`,
@@ -60,14 +93,15 @@ export const pubmedFetcher: IntegrationFetcher = async (
         published_at: rec.pubdate ? safeDate(rec.pubdate) : null,
         raw_summary: `${journal}${rec.pubdate ? ` · ${rec.pubdate}` : ""}`,
         raw_payload: { pmid: id, ...rec },
-      };
-    })
-    .filter((x): x is RawUpdateInput => x !== null);
+      });
+    }
+  }
 
   return { source: "PubMed", fetchedAt: now, items, placeholder: false };
 };
 
-function safeDate(value: string): string | null {
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+function daysSince(iso: string): number {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 7;
+  return Math.ceil((Date.now() - then) / (24 * 60 * 60 * 1000));
 }
